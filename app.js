@@ -27,9 +27,25 @@ $(function(){
     },
     getUserPhotos: function() {
       var self = this;
+      this.userPhotosLatLng = new Array;
       this.userPhotos = new UserPhotos();
       this.userPhotos.fetch({success: function(model, response){
+        model.forEach(function(photo){
+          if ( photo.has('location') ) {
+            console.log(photo.get('location').latitude + ", " + photo.get('location').longitude);
+            userPhoto = new Object;
+            userPhoto.lat = photo.get('location').latitude;
+            userPhoto.lng = photo.get('location').longitude;
+            self.userPhotosLatLng.push(userPhoto);
+          }
+        });
+        self.userPhotosLatLng.forEach(function(photo){
+          if (_.isNaN(photo.lat)){
+            self.userPhotosLatLng = _.without(self.userPhotosLatLng, photo);
+          }
+        });
         self.plotPhotos();
+        console.log(self.userPhotosLatLng);
       }});
     },
     plotPhotos: function() {
@@ -47,7 +63,7 @@ $(function(){
           myOptions);
         model.forEach(function(photo){
           if ( photo.has('location') ) {
-            console.log(photo.get('location').latitude + ", " + photo.get('location').longitude);
+            //console.log(photo.get('location').latitude + ", " + photo.get('location').longitude);
             //$("#photo").append(self.photoTemplate({photo: photo}));       
             var content = 'Photographer: ' + photo.get('user').username + '<br />' +
                           'Likes: ' + photo.get('likes').count + '<br />' +
@@ -92,7 +108,7 @@ $(function(){
       this.distances = new Array;
       this.photos.forEach(function(photo){
         if ( photo.has('location') ) {
-          var from = new google.maps.LatLng(35.15763, -111.6744);
+          var from = new google.maps.LatLng(self.userPhotosLatLng[0].lat, self.userPhotosLatLng[0].lng);
           var to   = new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude);
           dist = new Object;
           dist.apart = google.maps.geometry.spherical.computeDistanceBetween(from, to);
@@ -102,7 +118,6 @@ $(function(){
           self.distances.push(dist);
         }
       });
-      console.log(this.distances);
       this.distances.forEach(function(photo){
         if (_.isNaN(photo.apart)){
           self.distances = _.without(self.distances, photo);
@@ -114,61 +129,54 @@ $(function(){
           closest = _.without(closest, photo);
         }
       });
-      console.log(closest);
-      this.yourTurf = closest[0].apart;
-      console.log(this.yourTurf);
-      //this.yourTurf = closest.apart;
+      if ( closest[0] != null){
+        this.yourTurf = closest[0].apart;
+      } else {
+        this.yourTurf = 2500000;
+      }
       this.plotUserPhotos();
     },
     plotUserPhotos: function() {
       var self = this;
-      //this.userPhotos = new UserPhotos();
-      //this.userPhotos.fetch({success: function(model, response){
-        var turf = {};
-        //var myOptions = {
-          //zoom: 2,
-          //center: new google.maps.LatLng(0, 0),
-          //mapTypeId: google.maps.MapTypeId.ROADMAP
-        //};
-        this.userPhotos.forEach(function(photo){
-          if ( photo.has('location') ) {
-            console.log(photo.get('location').latitude + ", " + photo.get('location').longitude);
-            //$("#photo").append(self.photoTemplate({photo: photo}));
-            var content = 'Photographer: ' + photo.get('user').username + '<br />' +
-                          'Likes: ' + photo.get('likes').count + '<br />' +
-                          'Turf: ' + Math.floor((3.1459 * (self.yourTurf * self.yourTurf)) / 2589988.1) + ' square miles.<br />' +
-                          '<img src=' + photo.get('images').thumbnail.url + ' />';
-            var infowindow = new google.maps.InfoWindow({
-              content: content
-            });      
-            var marker = new google.maps.Marker({
-              position: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
-              map: self.map
-            });
-            turf[photo.get('id')] = {
-              center: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
-              likes: photo.get('likes').count
-            }
-            google.maps.event.addListener(marker, 'click', function() {
-              infowindow.open(self.map, marker);
-            });
-          } 
-        });
-        var turfCircle;
-        for (var picture in turf) {
-          var turfOptions = {
-            strokeColor: "#20B2AA",
-            strokeOpacity: 0.8,
-            strokeWeight: 2,
-            fillColor: "#20B2AA",
-            fillOpacity: 0.20,
-            map: self.map,
-            center: turf[picture].center,
-            radius: self.yourTurf
-          };
-          turfCircle = new google.maps.Circle(turfOptions);
-        }
-      //}});
+      var turf = {};
+      this.userPhotos.forEach(function(photo){
+        if ( photo.has('location') ) {
+          console.log(photo.get('location').latitude + ", " + photo.get('location').longitude);
+          //$("#photo").append(self.photoTemplate({photo: photo}));
+          var content = 'Photographer: ' + photo.get('user').username + '<br />' +
+                        'Likes: ' + photo.get('likes').count + '<br />' +
+                        'Turf: ' + Math.floor((3.1459 * (self.yourTurf * self.yourTurf)) / 2589988.1) + ' square miles.<br />' +
+                        '<img src=' + photo.get('images').thumbnail.url + ' />';
+          var infowindow = new google.maps.InfoWindow({
+            content: content
+          });      
+          var marker = new google.maps.Marker({
+            position: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
+            map: self.map
+          });
+          turf[photo.get('id')] = {
+            center: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
+            likes: photo.get('likes').count
+          }
+          google.maps.event.addListener(marker, 'click', function() {
+            infowindow.open(self.map, marker);
+          });
+        } 
+      });
+      var turfCircle;
+      for (var picture in turf) {
+        var turfOptions = {
+          strokeColor: "#20B2AA",
+          strokeOpacity: 0.8,
+          strokeWeight: 2,
+          fillColor: "#20B2AA",
+          fillOpacity: 0.20,
+          map: self.map,
+          center: turf[picture].center,
+          radius: self.yourTurf
+        };
+        turfCircle = new google.maps.Circle(turfOptions);
+      }
       console.log("Your turf: " + Math.floor((3.1459 * (self.yourTurf * self.yourTurf)) / 2589988.1) + " square miles.");
     }
   });
