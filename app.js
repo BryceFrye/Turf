@@ -21,7 +21,8 @@ $(function(){
       var self = this;
       this.user = new User();
       this.user.fetch({success: function(model, response){
-        //$("#profile").append(self.profileTemplate({user: model}));
+        console.log(model);
+        self.currentUserId = model.id;
         self.getUserPhotos();
       }});
     },
@@ -36,6 +37,7 @@ $(function(){
             userPhoto = new Object;
             userPhoto.lat = photo.get('location').latitude;
             userPhoto.lng = photo.get('location').longitude;
+            userPhoto.likes = photo.get('likes').count;
             self.userPhotosLatLng.push(userPhoto);
           }
         });
@@ -53,15 +55,15 @@ $(function(){
       this.photos = new Photos();
       this.photos.fetch({success: function(model, response){
         console.log(model);
-        var turf = {};
+        //var turf = {};
         var myOptions = {
           zoom: 2,
-          center: new google.maps.LatLng(0, 0),
+          center: new google.maps.LatLng(30, 0),
           mapTypeId: google.maps.MapTypeId.ROADMAP
         };
         self.map = new google.maps.Map(document.getElementById('map_canvas'),
           myOptions);
-        model.forEach(function(photo){
+        self.photos.forEach(function(photo){
           if ( photo.has('location') ) {
             //console.log(photo.get('location').latitude + ", " + photo.get('location').longitude);
             //$("#photo").append(self.photoTemplate({photo: photo}));       
@@ -75,66 +77,85 @@ $(function(){
             var marker = new google.maps.Marker({
               position: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
               map: self.map,
-              title: photo.get('user').username
+              title: photo.get('id')
             });
-            turf[photo.get('id')] = {
-              center: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
-              likes: photo.get('likes').count
-            }
-            google.maps.event.addListener(marker, 'click', function() {
+            //turf[photo.get('id')] = {
+              //center: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
+              //likes: photo.get('likes').count
+            //}
+            google.maps.event.addListener(marker, 'dblclick', function() {
               infowindow.open(self.map, marker);
             });
-          } 
-        });
-        var turfCircle;
-        for (var picture in turf) {
-          var turfOptions = {
-            strokeColor: "#FF0000",
-            strokeOpacity: 0.8,
-            strokeWeight: 2,
-            fillColor: "#FF0000",
-            fillOpacity: 0.20,
-            map: self.map,
-            center: turf[picture].center,
-            radius: 500 * turf[picture].likes
-          };
-          turfCircle = new google.maps.Circle(turfOptions);
-        }
-        self.checkDistances();
-      }});
-    },
-    checkDistances: function() {
-      var self = this;
-      this.distances = new Array;
-      this.photos.forEach(function(photo){
-        if ( photo.has('location') ) {
-          var from = new google.maps.LatLng(self.userPhotosLatLng[0].lat, self.userPhotosLatLng[0].lng);
-          var to   = new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude);
-          dist = new Object;
-          dist.apart = google.maps.geometry.spherical.computeDistanceBetween(from, to);
-          dist.image = photo.get('id');
-          dist.user = photo.get('user').username;
-          dist.likes = photo.get('likes').count;
-          self.distances.push(dist);
-        }
-      });
-      this.distances.forEach(function(photo){
-        if (_.isNaN(photo.apart)){
-          self.distances = _.without(self.distances, photo);
-        }
-      });
-      var closest = _.chain(this.distances).sortBy(function(distance){ return distance.apart; }).value();
-      closest.forEach(function(photo){
-        if ( photo.likes < 1000 ) {
-          closest = _.without(closest, photo);
-        }
-      });
-      if ( closest[0] != null){
-        this.yourTurf = closest[0].apart;
-      } else {
-        this.yourTurf = 2500000;
-      }
-      this.plotUserPhotos();
+            google.maps.event.addListener(marker, 'click', function() {
+              console.log(marker);
+              self.photos.forEach(function(photo){
+                if ( photo.get('id') == marker.title ) {
+                  self.selectedPhoto = photo;
+                }
+              });
+              var photosClone = _.clone(self.photos);
+              distances = new Array;
+              photosClone.forEach(function(photo){
+                if ( photo.get('id') == marker.title ) {
+                  photosClone = _.without(photosClone, photo);
+                } else {
+                  if ( photo.has('location') ) {
+                    var from = new google.maps.LatLng(self.selectedPhoto.get('location').latitude, self.selectedPhoto.get('location').longitude);
+                    var to   = new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude);
+                    dist = new Object;
+                    dist.apart = google.maps.geometry.spherical.computeDistanceBetween(from, to);
+                    dist.image = photo.get('id');
+                    dist.user = photo.get('user').username;
+                    dist.likes = photo.get('likes').count;
+                    distances.push(dist);
+                  }
+                }
+              });
+              distances.forEach(function(photo){
+                if (_.isNaN(photo.apart)){
+                  distances = _.without(distances, photo);
+                }
+              });
+              var closest = _.chain(distances).sortBy(function(distance){ return distance.apart; }).value();
+              closest.forEach(function(photo){
+                if ( photo.likes < self.selectedPhoto.get('likes').count ) {
+                  closest = _.without(closest, photo);
+                }
+              });
+              var turf = {};
+              turf[self.selectedPhoto] = {
+                center: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
+                likes: photo.get('likes').count
+              }
+              console.log(closest);
+              if ( closest[0] != null){
+                if ( closest[0].apart < 2000000 ) {
+                  var theirTurf = closest[0].apart;
+                } else {
+                  var theirTurf = 2000000;
+                }
+              } else {
+                var theirTurf = 2000000;
+              }
+              var turfCircle;
+              for (var picture in turf) {
+                var turfOptions = {
+                  strokeColor: "#FF0000",
+                  strokeOpacity: 0.8,
+                  strokeWeight: 2,
+                  fillColor: "#FF0000",
+                  fillOpacity: 0.15,
+                  map: self.map,
+                  center: turf[picture].center,
+                  radius: theirTurf
+                };
+                turfCircle = new google.maps.Circle(turfOptions);
+              }//for (var picture in turf) {
+            });//google.maps.event.addListener(marker, 'click', function() {
+          }//if ( photo.has('location') ) {
+        });//self.photos.forEach(function(photo){
+        self.plotUserPhotos();
+      }});//this.photos.fetch({success: function(model, response){
     },
     plotUserPhotos: function() {
       var self = this;
@@ -142,14 +163,14 @@ $(function(){
       this.userPhotos.forEach(function(photo){
         if ( photo.has('location') ) {
           console.log(photo.get('location').latitude + ", " + photo.get('location').longitude);
-          //$("#photo").append(self.photoTemplate({photo: photo}));
+//todo: move this to after the distance is checked
           var content = 'Photographer: ' + photo.get('user').username + '<br />' +
                         'Likes: ' + photo.get('likes').count + '<br />' +
                         'Turf: ' + Math.floor((3.1459 * (self.yourTurf * self.yourTurf)) / 2589988.1) + ' square miles.<br />' +
                         '<img src=' + photo.get('images').thumbnail.url + ' />';
           var infowindow = new google.maps.InfoWindow({
             content: content
-          });      
+          });     
           var marker = new google.maps.Marker({
             position: new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude),
             map: self.map
@@ -161,8 +182,9 @@ $(function(){
           google.maps.event.addListener(marker, 'click', function() {
             infowindow.open(self.map, marker);
           });
-        } 
+        }
       });
+      self.checkDistance();
       var turfCircle;
       for (var picture in turf) {
         var turfOptions = {
@@ -178,6 +200,42 @@ $(function(){
         turfCircle = new google.maps.Circle(turfOptions);
       }
       console.log("Your turf: " + Math.floor((3.1459 * (self.yourTurf * self.yourTurf)) / 2589988.1) + " square miles.");
+    },
+    checkDistance: function() {
+      var self = this;
+      this.distances = new Array;
+      this.photos.forEach(function(photo){
+        if ( photo.get('user').id == self.currentUserId ) {
+          self.photos = _.without(self.photos, photo);
+        } else {
+          if ( photo.has('location') ) {
+            var from = new google.maps.LatLng(self.userPhotosLatLng[0].lat, self.userPhotosLatLng[0].lng);
+            var to   = new google.maps.LatLng(photo.get('location').latitude, photo.get('location').longitude);
+            dist = new Object;
+            dist.apart = google.maps.geometry.spherical.computeDistanceBetween(from, to);
+            dist.image = photo.get('id');
+            dist.user = photo.get('user').username;
+            dist.likes = photo.get('likes').count;
+            self.distances.push(dist);
+          }
+        }
+      });
+      this.distances.forEach(function(photo){
+        if (_.isNaN(photo.apart)){
+          self.distances = _.without(self.distances, photo);
+        }
+      });
+      var closest = _.chain(this.distances).sortBy(function(distance){ return distance.apart; }).value();
+      closest.forEach(function(photo){
+        if ( photo.likes < self.userPhotosLatLng[0].likes ) {
+          closest = _.without(closest, photo);
+        }
+      });
+      if ( closest[0] != null){
+        this.yourTurf = closest[0].apart;
+      } else {
+        this.yourTurf = 2500000;
+      }
     }
   });
   
@@ -213,7 +271,7 @@ $(function(){
     },
     url: function() {
       //return 'https://api.instagram.com/v1/users/self/media/recent?'+this.token+'&callback=?';
-      //return 'https://api.instagram.com/v1/users/self/feed?'+this.token+'&callback=?&count=30';
+      //return 'https://api.instagram.com/v1/users/self/feed?'+this.token+'&callback=?&count=100';
       return 'https://api.instagram.com/v1/media/popular?'+this.token+'&callback=?&count=100';
     },
     parse: function(response) {
